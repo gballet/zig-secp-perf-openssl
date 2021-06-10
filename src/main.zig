@@ -12,10 +12,12 @@ pub fn main() anyerror!void {
     var err = openssl.OPENSSL_init_crypto(openssl.OPENSSL_INIT_LOAD_CONFIG, null);
     defer openssl.OPENSSL_cleanup();
 
-    var grp: ?*openssl.EC_GROUP = openssl.EC_GROUP_new_by_curve_name(openssl.NID_secp256k1);
-    if (grp == null) {
-        return error.CouldNotGetGroup;
+    var key: *openssl.EC_KEY = openssl.EC_KEY_new_by_curve_name(openssl.NID_secp256k1) orelse return error.CouldNotGetKey;
+    if (openssl.EC_KEY_generate_key(key) != 1) {
+        return error.CouldNotGenerateKey;
     }
+
+    var grp: *openssl.EC_GROUP = openssl.EC_GROUP_new_by_curve_name(openssl.NID_secp256k1) orelse return error.CouldNotGetGroup;
     defer openssl.EC_GROUP_free(grp);
 
     var p: ?*openssl.EC_POINT = openssl.EC_POINT_new(grp);
@@ -50,6 +52,11 @@ pub fn main() anyerror!void {
     defer openssl.BN_free(zero);
     var r = openssl.EC_POINT_new(grp) orelse return error.CouldNotAllocateBigNum;
     defer openssl.EC_POINT_free(r);
+    const pkey = openssl.EC_KEY_get0_public_key(key);
+    if (openssl.EC_POINT_copy(r, pkey) != 1) {
+        return error.CouldNotCopyPublicKeyIntoVariable;
+    }
+
     var dummy = openssl.EC_POINT_new(grp);
     defer openssl.EC_POINT_free(dummy);
 
@@ -61,7 +68,7 @@ pub fn main() anyerror!void {
         std.log.info("entry {}", .{count});
         const start = std.time.nanoTimestamp();
         for (scalars) |scalar| {
-            if (openssl.EC_POINT_mul(grp, r, scalar, r, zero, ctx) != 1) {
+            if (openssl.EC_POINT_mul(grp, r, zero, pkey, scalar, ctx) != 1) {
                 return error.CouldNotMultiply;
             }
         }
