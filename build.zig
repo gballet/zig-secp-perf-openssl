@@ -15,6 +15,7 @@ pub fn build(b: *Builder) void {
     exe.setTarget(target);
     exe.setBuildMode(mode);
     exe.linkSystemLibrary("crypto");
+    exe.linkSystemLibrary("c");
     exe.install();
 
     const run_cmd = exe.run();
