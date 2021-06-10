@@ -1,6 +1,7 @@
 const std = @import("std");
 const openssl = @cImport({
     @cInclude("openssl/crypto.h");
+    @cInclude("openssl/rand.h");
     @cInclude("openssl/obj_mac.h");
     @cInclude("openssl/ec.h");
     @cInclude("openssl/err.h");
@@ -11,6 +12,10 @@ const crypto = std.crypto;
 pub fn main() anyerror!void {
     var err = openssl.OPENSSL_init_crypto(openssl.OPENSSL_INIT_LOAD_CONFIG, null);
     defer openssl.OPENSSL_cleanup();
+
+    if (openssl.RAND_status() != 1) {
+        return error.RandNotWorking;
+    }
 
     var key: *openssl.EC_KEY = openssl.EC_KEY_new_by_curve_name(openssl.NID_secp256k1) orelse return error.CouldNotGetKey;
     if (openssl.EC_KEY_generate_key(key) != 1) {
@@ -39,10 +44,13 @@ pub fn main() anyerror!void {
     var i: usize = 0;
     while (i < scalars.len) : (i += 1) {
         scalars[i] = openssl.BN_new() orelse return error.CouldNotAllocateBigNum;
-        defer openssl.BN_free(scalars[i]);
-        if (openssl.BN_rand_range(scalars[i], order) != 1) {
+        errdefer openssl.BN_free(scalars[i]);
+        if (openssl.BN_rand(scalars[i], 256, -1, 1) != 1) {
             return error.CouldNotGetRandomBigNum;
         }
+            if (openssl.BN_is_zero(scalars[i]) == 1) {
+                return error.ScalarIsZero;
+            }
     }
 
     var zero = openssl.BN_new() orelse return error.CouldNotAllocateBigNum;
@@ -68,6 +76,9 @@ pub fn main() anyerror!void {
         std.log.info("entry {}", .{count});
         const start = std.time.nanoTimestamp();
         for (scalars) |scalar| {
+            if (openssl.BN_is_zero(scalar) == 1) {
+                return error.ScalarIsZero;
+            }
             if (openssl.EC_POINT_mul(grp, r, zero, pkey, scalar, ctx) != 1) {
                 return error.CouldNotMultiply;
             }
