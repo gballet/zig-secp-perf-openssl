@@ -8,6 +8,7 @@ const openssl = @cImport({
     @cInclude("openssl/evp.h");
 });
 const crypto = std.crypto;
+const info = std.log.info;
 
 pub fn main() anyerror!void {
     var err = openssl.OPENSSL_init_crypto(openssl.OPENSSL_INIT_LOAD_CONFIG, null);
@@ -48,9 +49,9 @@ pub fn main() anyerror!void {
         if (openssl.BN_rand(scalars[i], 256, -1, 1) != 1) {
             return error.CouldNotGetRandomBigNum;
         }
-            if (openssl.BN_is_zero(scalars[i]) == 1) {
-                return error.ScalarIsZero;
-            }
+        if (openssl.BN_is_zero(scalars[i]) == 1) {
+            return error.ScalarIsZero;
+        }
     }
 
     var zero = openssl.BN_new() orelse return error.CouldNotAllocateBigNum;
@@ -73,7 +74,7 @@ pub fn main() anyerror!void {
 
     var count: usize = 0;
     while (count < 1000) : (count += 1) {
-        std.log.info("entry {}", .{count});
+        info("entry {}", .{count});
         const start = std.time.nanoTimestamp();
         for (scalars) |scalar| {
             if (openssl.BN_is_zero(scalar) == 1) {
@@ -85,6 +86,27 @@ pub fn main() anyerror!void {
         }
         const end = std.time.nanoTimestamp();
 
-        try f.writer().print("{},{}\n", .{ count, @divTrunc(end - start, 1000) });
+        try f.writer().print("1,{}\n", .{@divTrunc(end - start, 1000)});
+    }
+
+    var edbp = crypto.sign.Ed25519.Curve.basePoint;
+    var prng = std.rand.DefaultPrng.init(@intCast(u64, std.time.milliTimestamp()));
+
+    var scalars2: [1000][32]u8 = undefined;
+    i = 0;
+    while (i < 1000) : (i += 1) {
+        std.rand.Random.bytes(&prng.random, scalars2[i][0..]);
+    }
+    count = 0;
+    while (count < 1000) : (count += 1) {
+        info("entry {}", .{count});
+        const start = std.time.nanoTimestamp();
+        var j: usize = 0;
+        for (scalars2) |scalar| {
+            _ = try edbp.mul(scalar);
+        }
+        const end = std.time.nanoTimestamp();
+
+        try f.writer().print("2,{}\n", .{@divTrunc(end - start, 1000)});
     }
 }
